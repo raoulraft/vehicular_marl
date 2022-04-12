@@ -1,14 +1,16 @@
 import numpy as np
 
-K = 200
-K_ol = 200
+K = 150
+K_ol = 150
 
 
 class InputConfig:
-    def __init__(self, uavs, processing_rate, offloading_rate, lmbda, prob_trans, shifting_probs, max_time=10000,
+    def __init__(self, uavs, processing_rate, offloading_rate, lmbda, prob_trans, shifting_probs, algorithm,
+                 max_time=10000,
                  obs_time=10,
                  frame_stack=4, ):
         self.n = uavs
+        self.alg = algorithm
         self.frame_stack = frame_stack
         self.processing_rate = processing_rate
         self.offloading_rate = offloading_rate

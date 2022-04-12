@@ -7,7 +7,7 @@ from pettingzoo import ParallelEnv
 from pettingzoo.utils import wrappers
 from pettingzoo.utils import parallel_to_aec
 
-from drone import Drone
+from drone import Drone, OtherDrone
 from zone import Zone
 from event import TimeMatrix
 
@@ -70,6 +70,7 @@ class parallel_env(ParallelEnv):
         self.lambdas = [input_c.lmbda_l, input_c.lmbda_h]
         self.prob_trans = input_c.prob_trans
 
+        self.alg = input_c.alg
         self.shifting = input_c.shifting_probs
 
         self.feature_size = (4 * self.number_of_uavs) + 4  # ProcessingQueue, OffloadingQueue, TrafficPattern, OffProbability + single agent
@@ -77,8 +78,13 @@ class parallel_env(ParallelEnv):
         self.tot_reward = 0
         self.obs_max_timer = input_c.obs_max_timer
         self.steps = 0
+        if self.alg != "fcto" or self.alg != "woto":
+            self.drones = [Drone(self.processing_rate, self.offloading_rate) for _ in range(self.number_of_uavs)]
+        else:
+            self.drones = [OtherDrone(self.processing_rate, self.offloading_rate, self.alg) for _ in range(self.number_of_uavs)]
+            for drone in self.drones:
+                drone.set_drones(self.drones)
 
-        self.drones = [Drone(self.processing_rate, self.offloading_rate) for _ in range(self.number_of_uavs)]
         self.zones = [Zone(i, self.lambdas[0], self.lambdas[1], i) for i in range(self.number_of_uavs)]
         self.time_matrix = TimeMatrix(self.number_of_uavs, self.prob_trans, self.lambdas)
 
@@ -146,7 +152,13 @@ class parallel_env(ParallelEnv):
 
         Returns the observations for each agent
         '''
-        self.drones = [Drone(self.processing_rate, self.offloading_rate) for _ in range(self.number_of_uavs)]
+        if self.alg != "fcto" or self.alg != "woto":
+            self.drones = [Drone(self.processing_rate, self.offloading_rate) for _ in range(self.number_of_uavs)]
+        else:
+            self.drones = [OtherDrone(self.processing_rate, self.offloading_rate, self.alg) for _ in
+                           range(self.number_of_uavs)]
+            for drone in self.drones:
+                drone.set_drones(self.drones)
         self.zones = [Zone(i, self.lambdas[0], self.lambdas[1], i) for i in range(self.number_of_uavs)]
         self.time_matrix = TimeMatrix(self.number_of_uavs, self.prob_trans, self.lambdas)
 
@@ -183,6 +195,17 @@ class parallel_env(ParallelEnv):
             for i in range(len(self.drones)):
                 self.drones[i].set_offloading_probability(list(actions.values())[i])
                 self.offloading_probabilities.append(self.drones[i].offloading_prob)
+
+        if self.alg == "ldo":
+            for i in range(len(self.drones)):
+                self.drones[i].set_offloading_probability(0)
+                self.offloading_probabilities.append(self.drones[i].offloading_prob)
+
+        if self.alg == "us":
+            for i in range(len(self.drones)):
+                self.drones[i].set_offloading_probability(5)
+                self.offloading_probabilities.append(self.drones[i].offloading_prob)
+
         [_, _, t_event] = self.time_matrix.search_next_event()
 
         obs_timer = t_event
