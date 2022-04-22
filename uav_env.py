@@ -78,12 +78,14 @@ class parallel_env(ParallelEnv):
         self.tot_reward = 0
         self.obs_max_timer = input_c.obs_max_timer
         self.steps = 0
-        if self.alg != "fcto" or self.alg != "woto":
-            self.drones = [Drone(self.processing_rate, self.offloading_rate) for _ in range(self.number_of_uavs)]
-        else:
-            self.drones = [OtherDrone(self.processing_rate, self.offloading_rate, self.alg) for _ in range(self.number_of_uavs)]
+        if self.alg == "fcto" or self.alg == "woto":
+            print("found " + self.alg + " algorithm")
+            self.drones = [OtherDrone(self.processing_rate, self.offloading_rate, self.alg) for _ in
+                           range(self.number_of_uavs)]
             for drone in self.drones:
                 drone.set_drones(self.drones)
+        else:
+            self.drones = [Drone(self.processing_rate, self.offloading_rate) for _ in range(self.number_of_uavs)]
 
         self.zones = [Zone(i, self.lambdas[0], self.lambdas[1], i) for i in range(self.number_of_uavs)]
         self.time_matrix = TimeMatrix(self.number_of_uavs, self.prob_trans, self.lambdas)
@@ -152,13 +154,13 @@ class parallel_env(ParallelEnv):
 
         Returns the observations for each agent
         '''
-        if self.alg != "fcto" or self.alg != "woto":
-            self.drones = [Drone(self.processing_rate, self.offloading_rate) for _ in range(self.number_of_uavs)]
-        else:
+        if self.alg == "fcto" or self.alg == "woto":
             self.drones = [OtherDrone(self.processing_rate, self.offloading_rate, self.alg) for _ in
                            range(self.number_of_uavs)]
             for drone in self.drones:
                 drone.set_drones(self.drones)
+        else:
+            self.drones = [Drone(self.processing_rate, self.offloading_rate) for _ in range(self.number_of_uavs)]
         self.zones = [Zone(i, self.lambdas[0], self.lambdas[1], i) for i in range(self.number_of_uavs)]
         self.time_matrix = TimeMatrix(self.number_of_uavs, self.prob_trans, self.lambdas)
 
@@ -187,14 +189,15 @@ class parallel_env(ParallelEnv):
         self.steps += 1
 
         # take action
-        if self.shifting:  # increase or decrease current probability
-            for i in range(len(self.drones)):
-                self.drones[i].change_offloading_probability(INCREASE[list(actions.values())[i]])
-                self.offloading_probabilities.append(self.drones[i].offloading_prob)
-        else:  # set probability to certain value
-            for i in range(len(self.drones)):
-                self.drones[i].set_offloading_probability(list(actions.values())[i])
-                self.offloading_probabilities.append(self.drones[i].offloading_prob)
+        if self.alg == "MULTIAGENT":
+            if self.shifting:  # increase or decrease current probability
+                for i in range(len(self.drones)):
+                    self.drones[i].change_offloading_probability(INCREASE[list(actions.values())[i]])
+                    self.offloading_probabilities.append(self.drones[i].offloading_prob)
+            else:  # set probability to certain value
+                for i in range(len(self.drones)):
+                    self.drones[i].set_offloading_probability(list(actions.values())[i])
+                    self.offloading_probabilities.append(self.drones[i].offloading_prob)
 
         if self.alg == "ldo":
             for i in range(len(self.drones)):
@@ -274,21 +277,29 @@ class parallel_env(ParallelEnv):
             mean_delay = statistics.mean(self.delay)
             jitter = statistics.variance(self.delay, mean_delay)
             off_probs = [drone.offloading_prob for drone in self.drones]
+
+            offloaded_pkts = sum([drone.offloaded_pkts for drone in self.drones])
+            processed_pkts = sum([drone.processed_pkts for drone in self.drones])
+            off_percentages = offloaded_pkts / (offloaded_pkts + processed_pkts)
             max_q = max([drone.max_queue_length for drone in self.drones])
             max_q_o = max([drone.max_ol_queue_length for drone in self.drones])
             mean_q = statistics.mean([drone.get_mean_queue()[0] for drone in self.drones])
             mean_q_o = statistics.mean([drone.get_mean_queue()[1] for drone in self.drones])
-            mean_off_probs = statistics.mean(self.offloading_probabilities)
+            if self.alg == "MULTIAGENT":
+                mean_off_probs = statistics.mean(self.offloading_probabilities)
+                wandb.log({"mean offloading probabilities": mean_off_probs}, commit=False)
+            else:
+                mean_off_probs = -1
             lost_p = sum([drone.lost_pkts for drone in self.drones])
             arrived_p = sum([drone.arrived_pkts for drone in self.drones])
             lost_percentage = lost_p / arrived_p
             wandb.log({"episode reward": self.tot_reward}, commit=False)
+            wandb.log({"offloading percentage": off_percentages}, commit=False)
             wandb.log({"lost packet percentage": lost_percentage}, commit=False)
             wandb.log({"max processing queue": max_q}, commit=False)
             wandb.log({"max offloading queue": max_q_o}, commit=False)
             wandb.log({"mean processing queue": mean_q}, commit=False)
             wandb.log({"mean offloading queue": mean_q_o}, commit=False)
-            wandb.log({"mean offloading probabilities": mean_off_probs}, commit=False)
             wandb.log({f"final offloading probability - {d_idx}": drone.offloading_prob
                        for d_idx, drone in enumerate(self.drones)}, commit=False)
             wandb.log({"jitter": jitter}, commit=False)

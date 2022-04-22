@@ -234,7 +234,7 @@ class OtherDrone(Drone):
             # check scheduling algorithm
 
             if self.alg == "woto":  # local processing
-                if self.queue < int(K * 60 / 100) or self.queue_ol >= K_ol:
+                if self.queue < int(self.max_queue_length * 60 / 100) or self.queue_ol >= K_ol:
                     if self.queue < K:
                         self.p_queue.append(Packet(t_event))
                         self.queue += 1
@@ -272,8 +272,8 @@ class OtherDrone(Drone):
 
             if self.alg == "fcto":
                 min_drone = self.search_min_drone()
-                if (self.queue * self.processing_rate) < (self.queue_ol * self.offloading_rate) + \
-                        (min_drone.queue * min_drone.processing_rate) or self.queue_ol >= K_ol:  # processing
+                if (self.queue / self.processing_rate) <= (self.queue_ol / self.offloading_rate) + \
+                        (min_drone.queue / min_drone.processing_rate) or self.queue_ol >= K_ol:  # processing
                     if self.queue < K:
                         self.p_queue.append(Packet(t_event))
                         self.queue += 1

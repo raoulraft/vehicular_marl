@@ -33,7 +33,7 @@ class ResultBuffer:
         self.delay = np.zeros(self.len_mu)  # delay final results
         self.jitter = np.zeros(self.len_mu)  # jitter final results
         self.reward = np.zeros(self.len_mu)  # reward final results
-        self.offloading_ratio = np.zeros(self.len_mu) # offloading ratio final results
+        self.offloading_ratio = np.zeros(self.len_mu)  # offloading ratio final results
         self.lost_jobs = np.zeros(self.len_mu)
         # arrays to save several runs results.
         # these will be processed and then discarded (reset to empty array) after the run is finished
@@ -86,11 +86,11 @@ class ResultBuffer:
         o = np.asarray(self.offloading_ratio)
         l = np.asarray(self.lost_jobs)
 
-        np.savetxt(self.dir + f"delay{self.net_slice}{self.var}.csv", d, delimiter=",")
-        np.savetxt(self.dir + f"jitter{self.net_slice}{self.var}.csv", j, delimiter=",")
-        np.savetxt(self.dir + f"reward{self.net_slice}{self.var}.csv", r, delimiter=",")
-        np.savetxt(self.dir + f"offload_ratio{self.net_slice}{self.var}.csv", o, delimiter=",")
-        np.savetxt(self.dir + f"lost_jobs{self.net_slice}{self.var}.csv", l, delimiter=",")
+        np.savetxt(self.dir + f"delay_{self.net_slice}_{self.var}.csv", d, delimiter=",")
+        np.savetxt(self.dir + f"jitter_{self.net_slice}_{self.var}.csv", j, delimiter=",")
+        np.savetxt(self.dir + f"reward_{self.net_slice}_{self.var}.csv", r, delimiter=",")
+        np.savetxt(self.dir + f"offload_ratio_{self.net_slice}_{self.var}.csv", o, delimiter=",")
+        np.savetxt(self.dir + f"lost_jobs_{self.net_slice}_{self.var}.csv", l, delimiter=",")
 
         # resetting arrays
         self.current_delay = []
@@ -101,11 +101,13 @@ class ResultBuffer:
 
     def save_run_results(self, avg_delay, jitter, reward, offloading_ratio, lost_jobs):
         try:
-            self.delay = np.loadtxt(self.dir + f"delay{self.n_drones_save}{self.var}{self.alg}.csv", delimiter=',')
-            self.jitter = np.loadtxt(self.dir + f"jitter{self.n_drones_save}{self.var}{self.alg}.csv", delimiter=",")
-            self.reward = np.loadtxt(self.dir + f"reward{self.n_drones_save}{self.var}{self.alg}.csv", delimiter=",")
-            self.offloading_ratio = np.loadtxt(self.dir + f"offload_ratio{self.n_drones_save}{self.var}{self.alg}.csv", delimiter=",")
-            self.lost_jobs = np.loadtxt(self.dir + f"lost_jobs{self.n_drones_save}{self.var}{self.alg}.csv", delimiter=",")
+            self.delay = np.loadtxt(self.dir + f"delay_{self.n_drones_save}_{self.var}_{self.alg}.csv", delimiter=',')
+            self.jitter = np.loadtxt(self.dir + f"jitter_{self.n_drones_save}_{self.var}_{self.alg}.csv", delimiter=",")
+            self.reward = np.loadtxt(self.dir + f"reward_{self.n_drones_save}_{self.var}_{self.alg}.csv", delimiter=",")
+            self.offloading_ratio = np.loadtxt(
+                self.dir + f"offload_ratio_{self.n_drones_save}_{self.var}_{self.alg}.csv", delimiter=",")
+            self.lost_jobs = np.loadtxt(self.dir + f"lost_jobs_{self.n_drones_save}_{self.var}_{self.alg}.csv",
+                                        delimiter=",")
         except OSError:  # if csv is not present, then it must be initialized for the first time. Hence, vars are set
             # to np.zeros
             self.delay = np.zeros(self.len_mu)  # delay final results
@@ -120,8 +122,6 @@ class ResultBuffer:
         self.current_reward.append(reward)
         self.current_offloading.append(offloading_ratio)
         self.current_lost.append(lost_jobs)
-
-
 
         # print(f"[{self.id}] \n {self.current_delay}")
 
@@ -156,8 +156,8 @@ class ResultBuffer:
         o = np.asarray(self.offloading_ratio)
         l = np.asarray(self.lost_jobs)
 
-        np.savetxt(self.dir + f"delay{self.n_drones_save}{self.var}{self.alg}.csv", d, delimiter=",")
-        np.savetxt(self.dir + f"jitter{self.n_drones_save}{self.var}{self.alg}.csv", j, delimiter=",")
-        np.savetxt(self.dir + f"reward{self.n_drones_save}{self.var}{self.alg}.csv", r, delimiter=",")
-        np.savetxt(self.dir + f"offload_ratio{self.n_drones_save}{self.var}{self.alg}.csv", o, delimiter=",")
-        np.savetxt(self.dir + f"lost_jobs{self.n_drones_save}{self.var}{self.alg}.csv", l, delimiter=",")
+        np.savetxt(self.dir + f"delay_{self.n_drones_save}_{self.var}_{self.alg}.csv", d, delimiter=",")
+        np.savetxt(self.dir + f"jitter_{self.n_drones_save}_{self.var}_{self.alg}.csv", j, delimiter=",")
+        np.savetxt(self.dir + f"reward_{self.n_drones_save}_{self.var}_{self.alg}.csv", r, delimiter=",")
+        np.savetxt(self.dir + f"offload_ratio_{self.n_drones_save}_{self.var}_{self.alg}.csv", o, delimiter=",")
+        np.savetxt(self.dir + f"lost_jobs_{self.n_drones_save}_{self.var}_{self.alg}.csv", l, delimiter=",")

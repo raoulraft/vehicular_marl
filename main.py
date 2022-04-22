@@ -6,7 +6,6 @@ import os
 from stable_baselines3 import PPO, A2C, TD3, SAC, DQN, HerReplayBuffer, HER, DDPG
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.env_util import make_vec_env
-from sb3_contrib import TQC, QRDQN, MaskablePPO, TRPO, ARS
 from uav_env import parallel_env
 from result_buffer import ResultBuffer
 from supersuit import frame_stack_v1, normalize_obs_v0
@@ -17,38 +16,41 @@ os.environ["WANDB_SILENT"] = "True"
 project_name = "multi-agent-uav-offloading"
 
 print("starting {} project".format(project_name))
-change_processing = True
+change_processing = False
 eval_episodes = 250
 
 p = [1.75 + k * 0.05 for k in range(11)]
-o = [0.5 + k * 1 for k in range(11)]
+o = [0.5 + k * 0.5 for k in range(11)]
 
-min_mu = p[0] if change_processing else o[0]
-max_mu = p[-1] if change_processing else o[-1]
-step_mu = 0.05 if change_processing else 1
+min_mu = p[0] if change_processing is True else o[0]
+max_mu = p[-1] if change_processing is True else o[-1]
+step_mu = 0.05 if change_processing is True else 0.5
 print("processing rates:", p)
+print("offloading rates:", o)
+print(f'max, min mu, step: {max_mu}, {min_mu}, {step_mu}')
 algo = PPO
 n_uavs = 8
 
-algorithms = ["fcto", "woto", "MULTIAGENT", "ldo", "us"]
+algorithms = ["fcto", "woto", "MULTIAGENT"]  # "ldo"]  # , "us"]
 for alg in algorithms:
     res_buffer = ResultBuffer(min_n_drone=n_uavs, max_n_drone=n_uavs, min_mu=min_mu, max_mu=max_mu, step_mu=step_mu,
                               net_slice=1, change_processing=change_processing, alg=alg)
 
-    for mu_p in p:
+    for mu_o in o:
         config = {"algo": algo if alg == "MULTIAGENT" else alg,
                   "n_cpus": 10,
                   "uavs": n_uavs,
                   "frame_stack": 4,
-                  "processing_rate": mu_p,
-                  "offloading_rate": 1,  # 2.5
+                  "processing_rate": 2,  # mu_p,  # 2
+                  "offloading_rate": mu_o,  # 1.5
                   "transition_probability_low": 1 / 180,
                   "transition_probability_high": 1 / 60,
                   "shifting_probs": True,  # True gives better learning curve, while False gives nice results quicker
                   "lambda_low": 1.3,
                   "lambda_high": 2.6,
                   "policy_type": "MlpPolicy",
-                  "total_timesteps": 500000  # 1000000
+                  "total_timesteps": 750000,  # 1000000
+                  "max_time": 50000,
                   }
 
         input_config = InputConfig(uavs=config["uavs"],
@@ -56,9 +58,11 @@ for alg in algorithms:
                                    processing_rate=config["processing_rate"],
                                    offloading_rate=config["offloading_rate"],
                                    lmbda=[config["lambda_low"], config["lambda_high"]],
-                                   prob_trans=[config["transition_probability_low"], config["transition_probability_high"]],
+                                   prob_trans=[config["transition_probability_low"],
+                                               config["transition_probability_high"]],
                                    shifting_probs=config["shifting_probs"],
                                    algorithm=alg,
+                                   max_time=config["max_time"]
                                    )
         input_config.print_settings()
 

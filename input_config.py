@@ -1,7 +1,7 @@
 import numpy as np
 
-K = 150
-K_ol = 150
+K = 250
+K_ol = 250
 
 
 class InputConfig:
