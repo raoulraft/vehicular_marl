@@ -16,6 +16,7 @@ class Drone:
         self.o_queue = []  # Packet() offloading queues
 
         self.processing_rate = processing_rate  # CPU processing rate
+        self.starting_processing_rate = processing_rate  # 1 CPU processing rate (more can be turned on)
 
         self.offloading_rate = offloading_rate  # Offloading rate (depends on link and job size)
         self.offloading_prob = 0  # offloading probability currently used
@@ -184,6 +185,10 @@ class Drone:
         self.job_counter_obs = 0
         self.processed_job_counter_obs = 0
 
+    # Could be called by uav_env when choosing to turn on multiple CPU
+    def set_processing(self, multiplier):
+        self.processing_rate = self.starting_processing_rate * (multiplier + 1)
+
     # Could be called by uav_env to change the offloading probability by a certain amount
     def change_offloading_probability(self, amount):
         self.offloading_prob += amount
@@ -206,11 +211,13 @@ class Drone:
 # Called when a drone has to offload a packet: search the drone with the least amount of packets in his processing queue
 def search_receiving_drone(drones, sending_drone):
     min_queue = K + 1
+    proc_rate = 0.001
     destination_drone = None
 
     for drone in drones:
-        if drone.queue < min_queue and drones.index(drone) != sending_drone:
+        if (drone.queue/drone.processing_rate) < (min_queue/proc_rate) and drones.index(drone) != sending_drone:
             min_queue = drone.queue
+            proc_rate = drone.processing_rate
             destination_drone = drone
     return drones.index(destination_drone)
 

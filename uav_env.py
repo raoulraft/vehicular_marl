@@ -2,7 +2,7 @@ import functools
 import statistics
 import numpy as np
 import wandb
-from gym.spaces import Discrete, Box
+from gym.spaces import MultiDiscrete, Box
 from pettingzoo import ParallelEnv
 from pettingzoo.utils import wrappers
 from pettingzoo.utils import parallel_to_aec
@@ -73,11 +73,15 @@ class parallel_env(ParallelEnv):
         self.alg = input_c.alg
         self.shifting = input_c.shifting_probs
 
-        self.feature_size = (4 * self.number_of_uavs) + 4  # ProcessingQueue, OffloadingQueue, TrafficPattern, OffProbability + single agent
+        self.feature_size = (5 * self.number_of_uavs) + 5  # ProcessingQueue, OffloadingQueue, TrafficPattern, OffProbability + ProcessingRate + single agent
         self.t = 0
         self.tot_reward = 0
         self.obs_max_timer = input_c.obs_max_timer
         self.steps = 0
+
+        self.max_number_of_cpus = 2
+        self.delay_weight = 1
+        self.consumption_weight = 20 / self.max_number_of_cpus
         if self.alg == "fcto" or self.alg == "woto":
             print("found " + self.alg + " algorithm")
             self.drones = [OtherDrone(self.processing_rate, self.offloading_rate, self.alg) for _ in
@@ -92,8 +96,8 @@ class parallel_env(ParallelEnv):
 
         self.possible_agents = ["uav" + str(r) for r in range(self.number_of_uavs)]
         self.agent_name_mapping = dict(zip(self.possible_agents, list(range(len(self.possible_agents)))))
-        self._action_spaces = {agent: Discrete(7) for agent in self.possible_agents} if self.shifting \
-            else {agent: Discrete(10) for agent in self.possible_agents}
+        self._action_spaces = {agent: MultiDiscrete([self.max_number_of_cpus, 7]) for agent in self.possible_agents} if self.shifting \
+            else {agent: MultiDiscrete([self.max_number_of_cpus, 10]) for agent in self.possible_agents}
         self._observation_spaces = {agent: Box(low=0, high=1, shape=(self.feature_size,), dtype=np.float32)
                                     for agent in self.possible_agents}
         # tot, proc, ol
@@ -109,6 +113,14 @@ class parallel_env(ParallelEnv):
         self.current_delay = []
         # computes mean offloading probabilities
         self.offloading_probabilities = []
+        # computes mean processing rates
+        self.processing_rates = []
+        # computes mean delay reward
+        self.mean_delay_reward = []
+        # computes mean consumption reward
+        self.mean_consumption_reward = []
+        # computes total mean reward
+        self.mean_reward = []
 
         # normalize observation between 0 and 1
         self.max_observed_queue = 1
@@ -131,7 +143,7 @@ class parallel_env(ParallelEnv):
 
         # else
         # action = prob_off / 10
-        return Discrete(7) if self.shifting else Discrete(10)
+        return MultiDiscrete([self.max_number_of_cpus, 7]) if self.shifting else MultiDiscrete([self.max_number_of_cpus, 10])
 
     def render(self, mode="human"):
         pass
@@ -172,6 +184,11 @@ class parallel_env(ParallelEnv):
         self.delay = []
         self.current_delay = []
         self.offloading_probabilities = []
+        self.processing_rates = []
+        self.mean_delay_reward = []
+        self.mean_consumption_reward = []
+        self.mean_reward = []
+
         self.agents = self.possible_agents[:]
         self.t = 0
         self.steps = 0
@@ -192,22 +209,29 @@ class parallel_env(ParallelEnv):
         if self.alg == "MULTIAGENT":
             if self.shifting:  # increase or decrease current probability
                 for i in range(len(self.drones)):
-                    self.drones[i].change_offloading_probability(INCREASE[list(actions.values())[i]])
+                    self.drones[i].set_processing(list(actions.values())[i][0])
+                    self.drones[i].change_offloading_probability(INCREASE[list(actions.values())[i][1]])
                     self.offloading_probabilities.append(self.drones[i].offloading_prob)
+                    self.processing_rates.append(self.drones[i].processing_rate)
             else:  # set probability to certain value
                 for i in range(len(self.drones)):
-                    self.drones[i].set_offloading_probability(list(actions.values())[i])
+                    self.drones[i].set_processing(list(actions.values())[i][0])
+                    self.drones[i].set_offloading_probability(list(actions.values())[i][1])
                     self.offloading_probabilities.append(self.drones[i].offloading_prob)
+                    self.processing_rates.append(self.drones[i].processing_rate)
 
         if self.alg == "ldo":
             for i in range(len(self.drones)):
+                self.drones[i].set_processing(list(actions.values())[i][0])
                 self.drones[i].set_offloading_probability(0)
                 self.offloading_probabilities.append(self.drones[i].offloading_prob)
+                self.processing_rates.append(self.drones[i].processing_rate)
 
         if self.alg == "us":
             for i in range(len(self.drones)):
                 self.drones[i].set_offloading_probability(5)
                 self.offloading_probabilities.append(self.drones[i].offloading_prob)
+                self.processing_rates.append(self.drones[i].processing_rate)
 
         [_, _, t_event] = self.time_matrix.search_next_event()
 
@@ -239,9 +263,21 @@ class parallel_env(ParallelEnv):
         # update metrics (some jobs may be arrived to other queues via offloading event, which doesn't track
         # the receiving drone queues to update the metrics)
         self.update_normalization_counters()
+        n_active_cpus = []
+        for drone in self.drones:
+            n_active_cpus.append(drone.processing_rate)
 
+        delay_weight = self.delay_weight
+        consumption_weight = self.consumption_weight
         # retrieve rewards
-        reward = - statistics.mean(self.current_delay)
+        mean_delay_rew = -statistics.mean(self.current_delay) * delay_weight
+        mean_consumption_rew = -statistics.mean(n_active_cpus) * consumption_weight
+        self.mean_delay_reward.append(mean_delay_rew)
+        self.mean_consumption_reward.append(mean_consumption_rew)
+
+        reward = mean_delay_rew + mean_consumption_rew
+        self.mean_reward.append(reward)
+
         self.tot_reward += reward
         self.current_delay = []
         # rewards for all agents are placed in the rewards dictionary to be returned
@@ -275,9 +311,12 @@ class parallel_env(ParallelEnv):
         if env_done:
             self.agents = []
             mean_delay = statistics.mean(self.delay)
+            mean_reward = statistics.mean(self.mean_reward)
             jitter = statistics.variance(self.delay, mean_delay)
             off_probs = [drone.offloading_prob for drone in self.drones]
-
+            mean_consumption = statistics.mean(self.mean_consumption_reward)
+            mean_delay_rew = statistics.mean(self.mean_delay_reward)
+            mean_proc_rate = statistics.mean(self.processing_rates)
             offloaded_pkts = sum([drone.offloaded_pkts for drone in self.drones])
             processed_pkts = sum([drone.processed_pkts for drone in self.drones])
             off_percentages = offloaded_pkts / (offloaded_pkts + processed_pkts)
@@ -300,6 +339,10 @@ class parallel_env(ParallelEnv):
             wandb.log({"max offloading queue": max_q_o}, commit=False)
             wandb.log({"mean processing queue": mean_q}, commit=False)
             wandb.log({"mean offloading queue": mean_q_o}, commit=False)
+            wandb.log({"mean processing rates": mean_proc_rate}, commit=False)
+            wandb.log({"mean delay reward": mean_delay_rew}, commit=False)
+            wandb.log({"mean reward": mean_reward}, commit=False)
+            wandb.log({"mean consumption reward": mean_consumption}, commit=False)
             wandb.log({f"final offloading probability - {d_idx}": drone.offloading_prob
                        for d_idx, drone in enumerate(self.drones)}, commit=False)
             wandb.log({"jitter": jitter}, commit=False)
@@ -312,13 +355,14 @@ class parallel_env(ParallelEnv):
         return observations, rewards, dones, infos
 
     def get_obs(self, agent):
-        personal_feature = 4
+        personal_feature = 5
         out = np.full((self.feature_size), 0.0)
         drone = self.drones[agent]
         out[0] = drone.queue / self.max_observed_queue
         out[1] = drone.queue_ol / self.max_observed_queue_ol
         out[2] = drone.job_counter_obs / self.max_observed_job_counter
         out[3] = drone.offloading_prob / 100
+        out[4] = drone.processing_rate / (drone.starting_processing_rate * self.max_number_of_cpus)
 
         for i in range(len(self.drones)):
             out[i + personal_feature] = self.drones[i].queue / self.max_observed_queue
@@ -332,6 +376,9 @@ class parallel_env(ParallelEnv):
 
         for i in range(len(self.drones)):
             out[i + 3 * len(self.drones) + personal_feature] = self.drones[i].offloading_prob / 100
+
+        for i in range(len(self.drones)):
+            out[i + 4 * len(self.drones) + personal_feature] = self.drones[i].processing_rate / (self.drones[i].starting_processing_rate * self.max_number_of_cpus)
         out = np.array(out)
 
         return out
