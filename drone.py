@@ -5,11 +5,11 @@ import random
 
 
 class Drone:
-    def __init__(self, processing_rate, offloading_rate):
+    def __init__(self, id, processing_rate, offloading_rate):
         # all the counters are used to easily calculate the mean of some metrics without memory consumption
         # avg_metric_in_t1= ((counter-1) * avg_metric_in_t0 + new_value_in_t1) / counter
         # (counter increases each time a new_value has to be included in the mean)
-
+        self.id = id
         self.queue = 0  # processing queue counter (== len(o_queue))
         self.queue_ol = 0  # offloading queue counter (== len(p_queue))
         self.p_queue = []  # Packet() processing queues
@@ -50,18 +50,18 @@ class Drone:
     # Called each time a job arrives from the ground: decides whether the job will be offloaded or not. If the job
     # gets offloaded, it will be enqueues in the offloading queue, otherwise it will be enqueued in the processing
     # queue
-    def job_arrival(self, row, t_event, time_matrix, zones, offloaded_packet=None):
+    def job_arrival(self, row, t_event, time_matrix, zones, packet, offloaded=False):
         assert self.queue <= K
         assert self.queue_ol <= K_ol
         self.increase_counter()
         self.arrived_pkts += 1
-        if offloaded_packet is None:  # packet generated from zone
+        if offloaded is False:  # packet generated from zone
             # check offload probability and decide where to enqueue the packet
-            decision = random.uniform(0, 1)
-            if decision > (self.offloading_prob / 100):  # local processing
+
+            if packet.destination != 0:  # local processing
 
                 if self.queue < K:
-                    self.p_queue.append(Packet(t_event))
+                    self.p_queue.append(packet)
                     self.queue += 1
 
                     if self.queue == 0:  # stop timer for increasing empty queue Computing Element probability
@@ -80,7 +80,7 @@ class Drone:
                     time_matrix.update_matrix(self.processing_rate, zones[row].drone_id, 2, t_event)
             else:  # offloading
                 if self.queue_ol < K_ol:
-                    self.o_queue.append(Packet(t_event))
+                    self.o_queue.append(packet)
                     self.queue_ol += 1
                     if self.queue_ol > self.max_ol_queue_length:
                         self.max_ol_queue_length = self.queue_ol
@@ -93,14 +93,14 @@ class Drone:
                     # immediately trigger an offloading event
                     time_matrix.update_matrix(self.offloading_rate, zones[row].drone_id, 3, t_event)
 
-            zones[row].schedule_next_arrival(time_matrix, t_event)
+            # zones[row].schedule_next_arrival(time_matrix, t_event)  has been moved out
             # schedules the next job arrival (this happens only if the packet was not offloaded )
 
         else:  # packet needs to be processed locally, and delay needs to be retrieved
             if self.queue < K:
                 if self.queue == 0:  # stop timer for increasing empty queue CE probability
                     self.empty_queue_timer += t_event - self.start_timer
-                self.p_queue.append(offloaded_packet)
+                self.p_queue.append(packet)
                 self.queue += 1
                 self.mean_queue_length_counter[0] += 1
                 self.mean_queue_length[0] = (((self.mean_queue_length_counter[0] - 1) * self.mean_queue_length[0])
@@ -148,14 +148,13 @@ class Drone:
     # receiving_drone processing queue
     def job_offloading(self, row, t_event, time_matrix, zones, drones):
         # search the receiving drone
-        receiving_drone = search_receiving_drone(drones, row)
-
         p = self.o_queue.pop(0)
+        receiving_drone = p.destination
         p.set_offloaded(t_event)  # set, in the packet, the time in which it has been offloaded. Useful to gain more
         # insights on time spent in offloading and processing queues
 
         self.queue_ol -= 1
-        drones[receiving_drone].job_arrival(receiving_drone, t_event, time_matrix, zones, p)
+        drones[receiving_drone].job_arrival(receiving_drone, t_event, time_matrix, zones, p, offloaded=True)
         if self.queue_ol == 0:
             time_matrix.matrix[row][3] = math.inf
         else:
@@ -231,19 +230,17 @@ class OtherDrone(Drone):
     def set_drones(self, drones):
         self.drones = drones
 
-    def job_arrival(self, row, t_event, time_matrix, zones, offloaded_packet=None):
+    def job_arrival(self, row, t_event, time_matrix, zones, packet, offloaded=False):
         assert self.queue <= K
         assert self.queue_ol <= K_ol
         self.increase_counter()
         self.arrived_pkts += 1
-        if offloaded_packet is None:  # packet generated from zone
-
+        if offloaded is False:  # packet generated from zone
             # check scheduling algorithm
-
             if self.alg == "woto":  # local processing
                 if self.queue < int(self.max_queue_length * 60 / 100) or self.queue_ol >= K_ol:
                     if self.queue < K:
-                        self.p_queue.append(Packet(t_event))
+                        self.p_queue.append(packet)
                         self.queue += 1
 
                         if self.queue == 0:  # stop timer for increasing empty queue Computing Element probability
@@ -263,7 +260,7 @@ class OtherDrone(Drone):
                         time_matrix.update_matrix(self.processing_rate, zones[row].drone_id, 2, t_event)
                 else:  # offloading
                     if self.queue_ol < K_ol:
-                        self.o_queue.append(Packet(t_event))
+                        self.o_queue.append(packet)
                         self.queue_ol += 1
                         if self.queue_ol > self.max_ol_queue_length:
                             self.max_ol_queue_length = self.queue_ol
@@ -282,7 +279,7 @@ class OtherDrone(Drone):
                 if (self.queue / self.processing_rate) <= (self.queue_ol / self.offloading_rate) + \
                         (min_drone.queue / min_drone.processing_rate) or self.queue_ol >= K_ol:  # processing
                     if self.queue < K:
-                        self.p_queue.append(Packet(t_event))
+                        self.p_queue.append(packet)
                         self.queue += 1
 
                         if self.queue == 0:  # stop timer for increasing empty queue Computing Element probability
@@ -302,7 +299,7 @@ class OtherDrone(Drone):
                         time_matrix.update_matrix(self.processing_rate, zones[row].drone_id, 2, t_event)
                 else:  # offloading
                     if self.queue_ol < K_ol:
-                        self.o_queue.append(Packet(t_event))
+                        self.o_queue.append(packet)
                         self.queue_ol += 1
                         if self.queue_ol > self.max_ol_queue_length:
                             self.max_ol_queue_length = self.queue_ol
@@ -323,7 +320,7 @@ class OtherDrone(Drone):
             if self.queue < K:
                 if self.queue == 0:  # stop timer for increasing empty queue CE probability
                     self.empty_queue_timer += t_event - self.start_timer
-                self.p_queue.append(offloaded_packet)
+                self.p_queue.append(packet)
                 self.queue += 1
                 self.mean_queue_length_counter[0] += 1
                 self.mean_queue_length[0] = (((self.mean_queue_length_counter[0] - 1) * self.mean_queue_length[0])
@@ -344,7 +341,6 @@ class OtherDrone(Drone):
                 min_queue = drone.queue
                 destination_drone = drone
         return destination_drone
-
 
 # Ignore this class. It could be useful in scenarios in which the processing rate has to periodically change
 class BatteryDrone(Drone):
@@ -375,7 +371,7 @@ class BatteryDrone(Drone):
         super().clear_buffer()
         self.inactivity_time = 0
 
-    def job_arrival(self, row, t_event, time_matrix, zones, offloaded_packet=None):
+    def job_arrival(self, row, t_event, time_matrix, zones, packet, offloaded=False):
         assert self.queue <= K
         assert self.queue_ol <= K_ol
         self.increase_counter()
@@ -383,7 +379,7 @@ class BatteryDrone(Drone):
         decision = random.uniform(0, 1)
         if decision > (self.offloading_prob / 100):  # local processing
             if self.queue < K:
-                self.p_queue.append(Packet(t_event))
+                self.p_queue.append(packet)
                 if self.queue == 0:  # stop timer for increasing empty queue CE probability
                     self.empty_queue_timer += t_event - self.start_timer
                     self.inactivity_time += t_event - self.inactivity_start
