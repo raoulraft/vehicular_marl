@@ -152,7 +152,7 @@ class raw_env(AECEnv):
             for drone in self.drones:
                 drone.set_drones(self.drones)
         else:
-            self.drones = [Drone(self.processing_rate, self.offloading_rate) for _ in range(self.number_of_uavs)]
+            self.drones = [Drone(i, self.processing_rate, self.offloading_rate) for i in range(self.number_of_uavs)]
         self.zones = [Zone(i, self.lambdas[0], self.lambdas[1], i) for i in range(self.number_of_uavs)]
         self.time_matrix = TimeMatrix(self.number_of_uavs, self.prob_trans, self.lambdas)
 
@@ -173,7 +173,8 @@ class raw_env(AECEnv):
         self.t = 0
         self.steps = 0
         self.tot_reward = 0
-        observations = {agent: self.get_obs(aidx) for aidx, agent in enumerate(self.agents)}
+        observations = {agent: self.observe(aidx) for aidx, agent in enumerate(self.agents)}
+
         # new
         self.agents = self.possible_agents[:]
         self.rewards = {agent: 0 for agent in self.agents}

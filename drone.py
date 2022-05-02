@@ -15,7 +15,7 @@ class Drone:
         self.p_queue = []  # Packet() processing queues
         self.o_queue = []  # Packet() offloading queues
 
-        self.rotated_destination_id = -1  # id of the destination drone
+        self.rotated_destination_id = 0  # id of the destination drone
         self.scheduled_jobs = 0  # jobs scheduled in the previous epoch
         self.processing_rate = processing_rate  # CPU processing rate
         self.starting_processing_rate = processing_rate  # 1 CPU processing rate (more can be turned on)
@@ -59,7 +59,6 @@ class Drone:
         self.arrived_pkts += 1
         if offloaded is False:  # packet generated from zone
             # check offload probability and decide where to enqueue the packet
-            assert packet.destination
             if packet.destination != self.id:  # local processing
 
                 if self.queue < K:
