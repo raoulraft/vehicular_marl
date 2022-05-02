@@ -26,7 +26,7 @@ def env(input_c, result_buffer=None):
     # This wrapper is only for environments which print results to the terminal
     # env = wrappers.CaptureStdoutWrapper(env)
     # this wrapper helps error handling for discrete action spaces
-    env = wrappers.AssertOutOfBoundsWrapper(env)
+    # env = wrappers.AssertOutOfBoundsWrapper(env)
     # Provides a wide vareity of helpful user errors
     # Strongly recommended
     env = wrappers.OrderEnforcingWrapper(env)
@@ -34,7 +34,7 @@ def env(input_c, result_buffer=None):
     return env
 
 
-def raw_env(AECEnv):
+class raw_env(AECEnv):
 
     metadata = {'render.modes': ['human'], "name": "rps_v2"}
 
@@ -65,8 +65,7 @@ def raw_env(AECEnv):
 
         self.alg = input_c.alg
 
-        # TODO: insert number of jobs_to_schedule as a feature
-        self.feature_size = (5 * self.number_of_uavs) + 5  # ProcessingQueue, OffloadingQueue, TrafficPattern, OffProbability + ProcessingRate + single agent
+        self.feature_size = (4 * self.number_of_uavs) + 5  # ProcessingQueue, OffloadingQueue, TrafficPattern, OffProbability + ProcessingRate + single agent
         self.t = 0
         self.tot_reward = 0
         self.obs_max_timer = input_c.obs_max_timer
@@ -182,12 +181,6 @@ def raw_env(AECEnv):
         self.dones = {agent: False for agent in self.agents}
         self.infos = {agent: {} for agent in self.agents}
 
-        # TODO: to change into a data structures which contains both
-        #       id of the destination RSU and the number of jobs that are being offloaded
-        #       moreover, this value has to be changed each time a job is actually offloaded into the
-        #       processing queue
-        self.state = {agent: 0 for agent in self.agents}
-
         self.observations = {agent: self.observe(aidx) for aidx, agent in enumerate(self.agents)}
         '''
         Our agent_selector utility allows easy cyclic stepping through the agents list.
@@ -200,9 +193,7 @@ def raw_env(AECEnv):
 
         # action[0] = processing multiplier
         # action[1] = jobs batch destination
-        # TODO: the number of action[1] has to correspond with the observation -> 0 always means local processing,
-        #       1 means the first drone processing queue (in the observation)
-        #       -> remove local processing queue among the "FANET queues" observations
+
         if self.dones[self.agent_selection]:
             # handles stepping an agent which is already done
             # accepts a None action for the one agent, and moves the agent_selection to
@@ -213,12 +204,6 @@ def raw_env(AECEnv):
 
         # The cumulative reward that the agent has received since it last acted.
         self._cumulative_rewards[agent] = 0
-
-        # stores action of current agent
-        # TODO: to change into a data structures which contains both
-        #       id of the destination RSU and the number of jobs that are being offloaded
-        #       otherwise just add into self.state[destination_drone] the number of jobs that are being offloaded to it
-        self.state[self.agent_selection] = action
 
         self.steps += 1
         """
@@ -253,21 +238,25 @@ def raw_env(AECEnv):
         [_, _, t_event] = self.time_matrix.search_next_event()
 
         # schedule all the jobs arrived in the last epochs for the agent
+        job_to_schedule_counter = 0
         for job in self.jobs_to_schedule:  # has [id_drone, Packet(t_event)]
             if job[0] == self.agent_selection:
+                job_to_schedule_counter += 1
                 packet = job[1]
-                # TODO: check that destination is the correct one (0 means local processing, but 1 is not
-                #  the first drone in self.drones, but in the rotated self.drones!)
                 drone_list = collections.deque(self.drones)
                 drone_list.rotate(-agent)  # to shift to the left
                 shifted_drone_list = list(drone_list)
-                destination_drone_id = shifted_drone_list[action[1]].id  # TODO: print it to check that it is correct!
+                destination_drone_id = shifted_drone_list[action[1]].id
+                print("agent:", self.agent_selection, " action:", action[1], " destination_drone_id:", destination_drone_id)
+                # destination_drone_id is now returning the rotated id of the destination drone!
+                rotated_id = action[1]
                 packet.set_destination(destination_drone_id)  # set the drone destination
+                self.drones[self.agent_selection].rotated_destination_id = rotated_id
                 self.drones[self.zones[self.agent_selection].drone_id].job_arrival(self.agent_selection, t_event,
                                                                                    self.time_matrix, self.zones,
                                                                                    packet)
                 self.jobs_to_schedule.remove(job)
-
+        self.drones[self.agent_selection].scheduled_jobs = job_to_schedule_counter
         # collect reward if it is the last agent to act
         if self._agent_selector.is_last():
             assert not self.jobs_to_schedule  # check that there are no jobs left to schedule
@@ -332,10 +321,6 @@ def raw_env(AECEnv):
             # observe the current state
 
             for i in self.agents:
-                # TODO: to change so that the next agents will see the actions already done
-                #       maybe i just have to change observe so that it shows the most updated view, based on
-                #       self.states, which are the decisions of the offloaded packets
-                #       each time a job is offloaded, self.state[agent] has to be decreased by one
                 self.observations[i] = {agent: self.observe(aidx) for aidx, agent in enumerate(self.agents)}
 
             self.tot_reward += reward
@@ -392,8 +377,7 @@ def raw_env(AECEnv):
                     self.res_buffer.save_run_results(avg_delay=mean_delay, jitter=jitter, reward=self.tot_reward,
                                                      offloading_ratio=mean_off_probs, lost_jobs=lost_percentage)
         else:
-            # necessary so that observe() returns a reasonable observation at all times.
-            self.state[self.agents[1 - self.agent_name_mapping[agent]]] = 0
+
             # no rewards are allocated until all players give an action
             self._clear_rewards()  # for agent in self.rewards:
                                    #     self.rewards[agent] = 0
@@ -410,52 +394,45 @@ def raw_env(AECEnv):
         at any time after reset() is called.
         '''
 
-        # TODO: fix the observations to include
-        #       personal agent features
-        #       other uav important features (processing queues, incoming job rate == number of vehicles,
-        #       jobs_scheduled_but_not_arrived, processing rates)
-
         drone_list = collections.deque(self.drones)
         drone_list.rotate(-agent)  # to shift to the left
-        shifted_drone_list = list(drone_list)  # TODO: check if it is correct by printing it!
+        shifted_drone_list = list(drone_list)  # check if it is correct by printing it!
+        print("(shifted)", shifted_drone_list, " \nvs\n(original)", self.drones)
         out = np.full((self.feature_size), 0.0)
         # observation of one agent is the previous state of the other
 
-        personal_feature = 5
+        personal_feature = 4
         
         drone = self.drones[agent]
         out[0] = drone.queue / self.max_observed_queue
         out[1] = drone.queue_ol / self.max_observed_queue_ol
-        out[2] = drone.job_counter_obs / self.max_observed_job_counter
-        out[3] = drone.offloading_prob / 100
+        out[2] = drone.scheduled_jobs / self.max_observed_job_counter
+        out[3] = drone.rotated_destination_id / self.number_of_uavs
         out[4] = drone.processing_rate / (drone.starting_processing_rate * self.max_number_of_cpus)
         
-        for i in range(1, len(shifted_drone_list) + 1):  # since the first element needs to be skipped
-            out[i + personal_feature] = self.drones[i].queue / self.max_observed_queue
+        for i in range(1, len(shifted_drone_list)):  # since the first element needs to be skipped
+            out[i + personal_feature] = shifted_drone_list[i].queue / self.max_observed_queue
 
-        """
-        for i in range(len(self.drones)):
-            out[i + len(self.drones) + personal_feature] = self.drones[i].queue_ol / self.max_observed_queue_ol
-        """
-        for i in range(len(self.drones)):
+        for i in range(1, len(shifted_drone_list)):
             if i != agent:
-                out[i + 2 * len(self.drones) + personal_feature] = self.drones[
+                out[i + 2 * len(self.drones) + personal_feature] = shifted_drone_list[
                                                                    i].job_counter_obs / self.max_observed_job_counter
 
         # maybe to change into jobs in the offloading queues that are not still received by the uavs?
-        """
-        for i in range(len(self.drones)):
+
+        for i in range(1, len(shifted_drone_list)):
             if i != agent:
-                out[i + 3 * len(self.drones) + personal_feature] = self.drones[i].offloading_prob / 100
-        """
-        for i in range(len(self.drones)):
-            if i != agent:
-                out[i + 4 * len(self.drones) + personal_feature] = self.drones[i].processing_rate / (
+                out[i + 3 * len(self.drones) + personal_feature] = shifted_drone_list[i].processing_rate / (
                             self.drones[i].starting_processing_rate * self.max_number_of_cpus)
+
+        for i in range(1, len(shifted_drone_list)):
+            if i != agent:
+                out[i + 4 * len(self.drones) + personal_feature] = shifted_drone_list[i].rotated_destination_id / self.number_of_uavs
         out = np.array(out)
 
         return out
     """
+    
     def get_obs(self, agent):
         personal_feature = 5
         out = np.full((self.feature_size), 0.0)
@@ -491,8 +468,8 @@ def raw_env(AECEnv):
                 self.max_observed_queue = self.drones[i].queue
             if self.drones[i].queue_ol > self.max_observed_queue_ol:
                 self.max_observed_queue_ol = self.drones[i].queue_ol
-            if self.drones[i].job_counter_obs > self.max_observed_job_counter:
-                self.max_observed_job_counter = self.drones[i].job_counter_obs
+            if self.drones[i].scheduled_jobs > self.max_observed_job_counter:  # edited to keep track of scheduled jobs
+                self.max_observed_job_counter = self.drones[i].scheduled_jobs
 
     def update_metrics(self, tot_delay, proc_delay, off_delay):
 

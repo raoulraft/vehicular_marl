@@ -6,14 +6,15 @@ import os
 from stable_baselines3 import PPO, A2C, TD3, SAC, DQN, HerReplayBuffer, HER, DDPG
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.env_util import make_vec_env
-from uav_env import parallel_env
+from uav_aec_env import env as aec_uav_env
 from result_buffer import ResultBuffer
-from supersuit import frame_stack_v1, normalize_obs_v0
+from supersuit import frame_stack_v1, normalize_obs_v0, vectorize_aec_env_v0
 from input_config import InputConfig
 
 os.environ["WANDB_SILENT"] = "True"
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"  # quick fix for libiomp5md bug, can skip in ubuntu
 
-project_name = "multi-agent-vehicular"
+project_name = "multi-agent-vehicular-aec"
 
 mu_p = 2
 mu_o = 4.5
@@ -55,17 +56,12 @@ input_config = InputConfig(uavs=config["uavs"],
                            )
 input_config.print_settings()
 
-uav_env = parallel_env(input_c=input_config)
-uav_env = supersuit.pettingzoo_env_to_vec_env_v1(uav_env)
-
-uav_env = supersuit.concat_vec_envs_v1(uav_env, 1, num_cpus=config["n_cpus"],
-                                       base_class='stable_baselines3')
-
-eval_env = parallel_env(input_c=input_config, result_buffer=res_buffer)
-eval_env = supersuit.pettingzoo_env_to_vec_env_v1(eval_env)
-eval_env = supersuit.concat_vec_envs_v1(eval_env, 1, num_cpus=config["n_cpus"],
-                                        base_class='stable_baselines3')
-
+uav_env = aec_uav_env(input_c=input_config)
+#uav_env = vectorize_aec_env_v0(uav_env, 1, num_cpus=0)
+#uav_env = supersuit.concat_vec_envs_v1(uav_env, 1, num_cpus=0,
+#                                               base_class='stable_baselines3', )
+eval_env = aec_uav_env(input_c=input_config, result_buffer=res_buffer)
+eval_env = vectorize_aec_env_v0(eval_env, 1, num_cpus=0)
 # uav_env = supersuit.normalize_obs_v0(uav_env, env_min=0, env_max=1)
 # uav_env = supersuit.frame_stack_v1(uav_env, 3)
 
