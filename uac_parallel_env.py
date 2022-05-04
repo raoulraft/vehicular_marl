@@ -79,9 +79,9 @@ class parallel_env(ParallelEnv):
         self.tot_reward = 0
         self.obs_max_timer = input_c.obs_max_timer
         self.steps = 0
-        self.max_number_of_cpus = 2
-        self.delay_weight = 1
-        self.consumption_weight = 20 / self.max_number_of_cpus
+        self.max_number_of_cpus = 4
+        self.delay_weight = input_c.delay_w
+        self.consumption_weight = input_c.consumption_w / self.max_number_of_cpus
         if self.alg == "fcto" or self.alg == "woto":
             print("found " + self.alg + " algorithm")
             self.drones = [OtherDrone(self.processing_rate, self.offloading_rate, self.alg) for _ in
@@ -405,6 +405,7 @@ class parallel_env(ParallelEnv):
         out[0] = drone.queue / self.max_observed_queue
         out[1] = drone.queue_ol / self.max_observed_queue_ol
         out[2] = drone.scheduled_jobs / self.max_observed_job_counter
+        # print(drone.scheduled_jobs)
         out[3] = drone.rotated_destination_id / self.number_of_uavs
         out[4] = drone.processing_rate / (drone.starting_processing_rate * self.max_number_of_cpus)
         k = 5

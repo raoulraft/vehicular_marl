@@ -5,7 +5,8 @@ K_ol = 250
 
 
 class InputConfig:
-    def __init__(self, uavs, processing_rate, offloading_rate, lmbda, prob_trans, shifting_probs, algorithm,
+    def __init__(self, uavs, processing_rate, offloading_rate, lmbda, prob_trans, shifting_probs, algorithm, delay_w,
+                 consumption_w,
                  max_time=10000,
                  obs_time=10,
                  frame_stack=4, ):
@@ -14,6 +15,8 @@ class InputConfig:
         self.frame_stack = frame_stack
         self.processing_rate = processing_rate
         self.offloading_rate = offloading_rate
+        self.delay_w = delay_w
+        self.consumption_w = consumption_w
         self.max_time = max_time
         self.lmbda_l = lmbda[0]
         self.lmbda_h = lmbda[1]
