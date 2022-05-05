@@ -39,8 +39,8 @@ for consumption_w in [10, 20, 50, 100, 150]:
               "lambda_low": 0.5,
               "lambda_high": 0.6,
               "policy_type": "MlpPolicy",
-              "total_timesteps": 3000000,  # 1000000
-              "max_time": 50000,  # 50000
+              "total_timesteps": 300000000,  # 1000000
+              "max_time": 10000,  # 50000
               }
 
     input_config = InputConfig(uavs=config["uavs"],

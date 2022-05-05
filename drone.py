@@ -59,7 +59,7 @@ class Drone:
         self.arrived_pkts += 1
         if offloaded is False:  # packet generated from zone
             # check offload probability and decide where to enqueue the packet
-            if packet.destination != self.id:  # local processing
+            if packet.destination == self.id:  # local processing
 
                 if self.queue < K:
                     self.p_queue.append(packet)
@@ -151,6 +151,7 @@ class Drone:
         # search the receiving drone
         p = self.o_queue.pop(0)
         receiving_drone = p.destination
+        assert receiving_drone != self.id
         p.set_offloaded(t_event)  # set, in the packet, the time in which it has been offloaded. Useful to gain more
         # insights on time spent in offloading and processing queues
 
