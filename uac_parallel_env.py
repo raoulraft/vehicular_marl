@@ -13,7 +13,7 @@ from drone import Drone, OtherDrone
 from zone import Zone
 from event import TimeMatrix
 
-INCREASE = [+1, +5, +10, -1, -5, -10, 0]
+
 K = 200
 
 
@@ -177,7 +177,6 @@ class parallel_env(ParallelEnv):
         self.zones = [Zone(i, self.lambdas[0], self.lambdas[1], i) for i in range(self.number_of_uavs)]
         self.time_matrix = TimeMatrix(self.number_of_uavs, self.prob_trans, self.lambdas)
 
-
         # reset metrics
         self.avg_tot_delay = [0, 0, 0]
         self.counter_avg_td = [0, 0, 0]
@@ -258,6 +257,7 @@ class parallel_env(ParallelEnv):
                     packet.set_destination(destination_drone_id)  # set the drone destination
                     drone.rotated_destination_id = rotated_id
                     drone.job_arrival(drone.id, t_event, self.time_matrix, self.zones, packet)
+                    self.update_normalization_counters()
                     self.jobs_to_schedule.remove(job)
             drone.scheduled_jobs = job_to_schedule_counter
 
@@ -280,8 +280,7 @@ class parallel_env(ParallelEnv):
                 # schedule next arrival
                 self.zones[row].schedule_next_arrival(self.time_matrix, t_event)
                 # self.drones[self.zones[row].drone_id].job_arrival(row, t_event, self.time_matrix, self.zones)
-                self.drones[self.zones[row].drone_id].increase_counter()
-                self.update_normalization_counters()
+                # self.update_normalization_counters()
 
             elif column == 2:  # JOB PROCESSING
                 tot_delay, proc_delay, off_delay = self.drones[row].job_processing(row, t_event, self.time_matrix,
@@ -290,6 +289,7 @@ class parallel_env(ParallelEnv):
 
             elif column == 3:  # JOB OFFLOADING
                 self.drones[row].job_offloading(row, t_event, self.time_matrix, self.zones, self.drones)
+                self.update_normalization_counters()
 
             self.t = t_event
 
@@ -399,7 +399,6 @@ class parallel_env(ParallelEnv):
         # print("(shifted)", [shifted_d.id for shifted_d in shifted_drone_list], "\nvs\n(original)", [drone.id for drone in self.drones])
         out = np.full((self.feature_size), 0.0)
         # observation of one agent is the previous state of the other
-
 
         drone = self.drones[agent]
         out[0] = drone.queue / self.max_observed_queue

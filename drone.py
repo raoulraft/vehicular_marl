@@ -171,7 +171,7 @@ class Drone:
         return mean_q, mean_q_ol
 
     # increases the counter of the number of jobs arrived in this epoch
-    def increase_counter(self):  # called by uav_env when a job arrived by offloading from another drone
+    def increase_counter(self):
         self.job_counter_obs += 1
 
     # increases the counter of the number of jobs processed in this epoch

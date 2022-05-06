@@ -10,6 +10,7 @@ from uac_parallel_env import parallel_env
 from result_buffer import ResultBuffer
 from supersuit import frame_stack_v1, normalize_obs_v0, vectorize_aec_env_v0
 from input_config import InputConfig
+from schedule import linear_schedule
 
 os.environ["WANDB_SILENT"] = "True"
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"  # quick fix for libiomp5md bug, can skip in ubuntu
@@ -37,10 +38,11 @@ for consumption_w in [10, 20, 50, 100, 150]:
               "transition_probability_high": 1 / 60,
               "shifting_probs": False,  # True gives better learning curve, while False gives nice results quicker
               "lambda_low": 0.5,
-              "lambda_high": 0.6,
+              "lambda_high": 2.5,
               "policy_type": "MlpPolicy",
               "total_timesteps": 300000000,  # 1000000
               "max_time": 10000,  # 50000
+              "linear_schedule": True,
               }
 
     input_config = InputConfig(uavs=config["uavs"],
@@ -62,7 +64,7 @@ for consumption_w in [10, 20, 50, 100, 150]:
     uav_env = supersuit.pettingzoo_env_to_vec_env_v1(uav_env)
 
     uav_env = supersuit.concat_vec_envs_v1(uav_env, 1, num_cpus=0,
-                                                   base_class='stable_baselines3')
+                                           base_class='stable_baselines3')
 
     eval_env = parallel_env(input_c=input_config, result_buffer=res_buffer)
     eval_env = supersuit.pettingzoo_env_to_vec_env_v1(eval_env)
@@ -77,7 +79,14 @@ for consumption_w in [10, 20, 50, 100, 150]:
             vf_coef=0.042202, max_grad_norm=0.9, gae_lambda=0.99, n_epochs=5, clip_range=0.3, batch_size=256)
     """
     # need to initialize it even for static policies to use evaluate_policy from sb3
-    model = algo(config["policy_type"], uav_env, verbose=0, gamma=0.95, tensorboard_log=f"runs")
+    model = algo(config["policy_type"],
+                 uav_env,
+                 verbose=0,
+                 gamma=0.99,
+                 tensorboard_log=f"runs",
+                 learning_rate=linear_schedule(3e-4) if config["linear_schedule"] is True else 3e-4,
+
+                 )
 
     if alg == "MULTIAGENT":
         print("initializing training")
@@ -92,6 +101,7 @@ for consumption_w in [10, 20, 50, 100, 150]:
                                                         config["transition_probability_high"]),
                   "alg {}".format(alg),
                   "weight{}".format(consumption_w),
+                  "linear_schedule {}".format(config["linear_schedule"]),
                   ],
             entity="xraulz",
             reinit=True,
